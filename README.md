@@ -1,3 +1,8 @@
+# Declaration
+
+This repo is for school assignment, and it makes use of code from the ESP-WHO repository. The original README is as below. 
+
+
 # ESP-WHO [[中文]](./README_CN.md)
 
 ESP-WHO is an image processing development platform based on Espressif chips. It contains development examples that may be applied in practical applications.
