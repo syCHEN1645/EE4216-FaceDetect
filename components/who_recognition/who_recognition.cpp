@@ -103,7 +103,7 @@ void WhoRecognitionCore::task()
                         id += std::to_string(ret[0].id); 
                         similarity += std::to_string(ret[0].similarity); 
                     }
-                    m_detect->set_detect_result_cb(new_detect_result_cb);
+                    m_detect->set_detect_result_cb(m_detect_result_cb);
                     json_payload = "{"; 
                     json_payload += "\"event\":\"" + event + "\",";
                     json_payload += "\"status\":" + status + ",";
@@ -111,9 +111,9 @@ void WhoRecognitionCore::task()
                     json_payload += "\"similarity\":" + similarity;
                     json_payload += "}\r";
                     tcp_send(json_payload); 
-                }
-                m_detect->set_detect_result_cb(m_detect_result_cb);
+                }    
             };
+            m_detect->set_detect_result_cb(new_detect_result_cb);
             continue;
         }
         // event = ""; 
