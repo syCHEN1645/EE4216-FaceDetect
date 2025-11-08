@@ -20,6 +20,9 @@ const char* TAG = "Stream";
 static esp_err_t stream_handler(httpd_req_t *req) {
     size_t jpg_buf_len = 0;
     uint8_t *jpg_buf = NULL;
+    camera_fb_t *cam_fb = NULL;
+    // Buffer for headers (not frames)
+    char buffer[128];
     // Check if  http response is ok
     auto res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
     if (res != ESP_OK) {
@@ -30,73 +33,79 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     httpd_resp_set_hdr(req, "X-Framerate", "60");
 
     while (true) {
-        camera_fb_t *cam_fb = esp_camera_fb_get();
+        cam_fb = esp_camera_fb_get();
         // Handle when no frame captured
         if (!cam_fb) {
             ESP_LOGE(TAG, "Camera capture failed");
             return ESP_FAIL;
         }
         ESP_LOGI(TAG, "FRAME INFO: len=%u format=%d", (unsigned)cam_fb->len, cam_fb->format);
-
-        // Buffer for headers (not frames)
-        char buffer[64];
-        // snprintf: put formatted string into buffer
-        // params: ptr to buffer, size of buffer, formatted string
-        int l = snprintf(buffer, sizeof(buffer), STREAM_PAYLOAD, cam_fb->len);
+        
+        // Make sure frame is of JPG before sending
+        bool converted = frame2jpg(cam_fb, 80, &jpg_buf, &jpg_buf_len);
+        // Return frame buffer
+        esp_camera_fb_return(cam_fb);
+        if (!converted) {
+            ESP_LOGI(TAG, "JPEG conversion failed");
+            break;
+        }
 
         // Send a boundary string
-        res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-        
+        res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));        
         if (res != ESP_OK) {
             break;
         }
         ESP_LOGI(TAG, "Boundary sent, res=%d", res);
         
         // Send payboad string
-        ESP_LOGI(TAG, "Payload sent, res=%d", res);
+        // snprintf: put formatted string into buffer
+        // params: ptr to buffer, size of buffer, formatted string
+        int l = snprintf(buffer, sizeof(buffer), STREAM_PAYLOAD, jpg_buf_len);
         res = httpd_resp_send_chunk(req, buffer, l);
         if (res != ESP_OK) {
             break;
         }
+        ESP_LOGI(TAG, "Payload sent, res=%d, jpg_len=%d", res, jpg_buf_len);
 
         // Send actual frame
-        // Make sure frame is of JPG before sending
-        if (!frame2jpg(cam_fb, 80, &jpg_buf, &jpg_buf_len)) {
-            break;
-        }
-
-        // Return frame buffer
-        esp_camera_fb_return(cam_fb);
-        cam_fb = NULL;
-
         res = httpd_resp_send_chunk(req, (const char *)jpg_buf, jpg_buf_len);
+        free(jpg_buf);
+        jpg_buf = NULL;
         if (res != ESP_OK) {
             break;
         }
         ESP_LOGI(TAG, "JPEG frame size=%u bytes", jpg_buf_len);
 
         // Signal end of this frame
-        res = httpd_resp_send_chunk(req, NULL, 0);
-        ESP_LOGI(TAG, "FRAME END (NULL) -> res=%d (%s)", res, esp_err_to_name(res));
+        // res = httpd_resp_send_chunk(req, NULL, 0);
+        // ESP_LOGI(TAG, "FRAME END (NULL) -> res=%d (%s)", res, esp_err_to_name(res));
         
-        if (res != ESP_OK) {
-            break;
-        }
+        // if (res != ESP_OK) {
+        //     break;
+        // }
         ESP_LOGI(TAG, "A frame was just sent to server");
         
-        //vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(120));
     }
+    if (jpg_buf) {
+        free(jpg_buf);
+    }
+    cam_fb = NULL;
+    jpg_buf = NULL;
     // Program comes here only if errors happen
     ESP_LOGE(TAG, "An error occured when streaming video");
     return res;
 }
 
 
-httpd_handle_t init_http(httpd_handle_t server) {
+httpd_handle_t init_http() {
+    httpd_handle_t server;
     // Set http config
     httpd_config_t http_config = HTTPD_DEFAULT_CONFIG();
     // Increase stack size to prevent overflow
     http_config.stack_size = 24 * 1024;
+    http_config.recv_wait_timeout = 5;
+    http_config.send_wait_timeout = 5;
 
     // Set handler
     if (httpd_start(&server, &http_config) != ESP_OK) {
@@ -108,6 +117,12 @@ httpd_handle_t init_http(httpd_handle_t server) {
         .method = HTTP_GET,
         .handler = stream_handler,
         .user_ctx = NULL
+    #ifdef CONFIG_HTTPD_WS_SUPPORT
+        ,
+        .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL
+    #endif
     };
     httpd_register_uri_handler(server, &stream_uri);
     ESP_LOGI(TAG, "Http server started successfully");
