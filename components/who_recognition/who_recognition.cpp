@@ -82,11 +82,11 @@ void WhoRecognitionCore::task()
         // json_payload += "\"id\":" + id + ",";
         // json_payload += "\"similarity\":" + similarity;
         // json_payload += "}";
-        event = ""; 
-        status = ""; 
-        id = ""; 
-        similarity = ""; 
         if (event_bits & RECOGNIZE) {
+            event = ""; 
+            status = ""; 
+            id = ""; 
+            similarity = ""; 
             event += "RECOGNIZE"; 
             auto new_detect_result_cb = [this](const detect::WhoDetect::result_t &result) {
                 auto ret = m_recognizer->recognize(result.img, result.det_res);
@@ -103,19 +103,19 @@ void WhoRecognitionCore::task()
                         id += std::to_string(ret[0].id); 
                         similarity += std::to_string(ret[0].similarity); 
                     }
+                    m_detect->set_detect_result_cb(new_detect_result_cb);
+                    json_payload = "{"; 
+                    json_payload += "\"event\":\"" + event + "\",";
+                    json_payload += "\"status\":" + status + ",";
+                    json_payload += "\"id\":" + id + ",";
+                    json_payload += "\"similarity\":" + similarity;
+                    json_payload += "}\r";
+                    tcp_send(json_payload); 
                 }
                 m_detect->set_detect_result_cb(m_detect_result_cb);
             };
-            m_detect->set_detect_result_cb(new_detect_result_cb);
             continue;
         }
-        json_payload = "{"; 
-        json_payload += "\"event\":\"" + event + "\",";
-        json_payload += "\"status\":" + status + ",";
-        json_payload += "\"id\":" + id + ",";
-        json_payload += "\"similarity\":" + similarity;
-        json_payload += "}";
-        tcp_send(json_payload); 
         // event = ""; 
         // status = ""; 
         // id = ""; 
