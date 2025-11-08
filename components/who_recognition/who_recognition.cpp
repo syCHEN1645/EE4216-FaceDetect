@@ -54,7 +54,7 @@ bool WhoRecognitionCore::run(const configSTACK_DEPTH_TYPE uxStackDepth,
 
 void WhoRecognitionCore::task()
 {
-    tcp_connect("192.168.1.184", 5500); 
+    tcp_connect("172.20.10.11", 5500); 
     while (true) {
         EventBits_t event_bits = xEventGroupWaitBits(
             m_event_group, RECOGNIZE | ENROLL | DELETE | TASK_PAUSE | TASK_STOP, pdTRUE, pdFALSE, portMAX_DELAY);
