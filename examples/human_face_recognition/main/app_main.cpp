@@ -45,7 +45,6 @@ static void event_handler(
                 esp_wifi_connect();
                 s_retry_num++;
                 ESP_LOGI(TAG_WIFI, "Disconnect event, retry to connect to the AP");
-                vTaskDelay(pdMS_TO_TICKS(10));
             } else {
                 xEventGroupSetBits(wifi_event_group, WIFI_CONNECT_FAIL_BIT);
             }
@@ -68,7 +67,7 @@ static void event_handler(
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         if (!server) {
             ESP_LOGI(TAG_WIFI, "Starting http server now at " IPSTR, IP2STR(&event->ip_info.ip));
-            init_http(server);
+            server = init_http();
         }
     }
 }
