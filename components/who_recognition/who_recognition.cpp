@@ -54,19 +54,15 @@ bool WhoRecognitionCore::run(const configSTACK_DEPTH_TYPE uxStackDepth,
 
 void WhoRecognitionCore::task()
 {
-    tcp_connect("172.20.10.11", 5500); 
+    tcp_connect("192.168.1.90", 5500); 
+    xTaskCreate(tcp_recv, "tcp_poll_recv", 4096, NULL, 5, NULL);
+    
     while (true) {
         EventBits_t event_bits = xEventGroupWaitBits(
             m_event_group, RECOGNIZE | ENROLL | DELETE | TASK_PAUSE | TASK_STOP, pdTRUE, pdFALSE, portMAX_DELAY);
-        // event = ""; 
-        // status = ""; 
-        // id = ""; 
-        // similarity = ""; 
         if (event_bits & TASK_STOP) {
-            // event += "TASK_STOP";
             break;
         } else if (event_bits & TASK_PAUSE) {
-            // event += "TASK_PAUSE"; 
             xEventGroupSetBits(m_event_group, TASK_PAUSED);
             EventBits_t pause_event_bits =
                 xEventGroupWaitBits(m_event_group, TASK_RESUME | TASK_STOP, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -76,12 +72,6 @@ void WhoRecognitionCore::task()
                 continue;
             }
         }
-        // json_payload = "{"; 
-        // json_payload += "\"event\":\"" + event + "\",";
-        // json_payload += "\"status\":" + status + ",";
-        // json_payload += "\"id\":" + id + ",";
-        // json_payload += "\"similarity\":" + similarity;
-        // json_payload += "}";
         if (event_bits & RECOGNIZE) {
             event = ""; 
             status = ""; 
@@ -116,12 +106,7 @@ void WhoRecognitionCore::task()
             m_detect->set_detect_result_cb(new_detect_result_cb);
             continue;
         }
-        // event = ""; 
-        // status = ""; 
-        // id = ""; 
-        // similarity = ""; 
         if (event_bits & ENROLL) {
-            // event += "ENROLL"; 
             auto new_detect_result_cb = [this](const detect::WhoDetect::result_t &result) {
                 esp_err_t ret = m_recognizer->enroll(result.img, result.det_res);
                 if (m_detect_result_cb) {
@@ -130,12 +115,9 @@ void WhoRecognitionCore::task()
                 if (m_recognition_result_cb) {
                     if (ret == ESP_FAIL) {
                         m_recognition_result_cb("Failed to enroll.");
-                        // status += "0"; 
                     } else {
                         int num_feats = m_recognizer->get_num_feats(); 
                         m_recognition_result_cb(std::format("id: {} enrolled.", num_feats));
-                        // status += "1"; 
-                        // id += std::to_string(num_feats); 
                     }
                 }
                 m_detect->set_detect_result_cb(m_detect_result_cb);
@@ -143,40 +125,20 @@ void WhoRecognitionCore::task()
             m_detect->set_detect_result_cb(new_detect_result_cb);
             continue;
         }
-        // json_payload = "{"; 
-        // json_payload += "\"event\":\"" + event + "\",";
-        // json_payload += "\"status\":" + status + ",";
-        // json_payload += "\"id\":" + id + ",";
-        // json_payload += "\"similarity\":" + similarity;
-        // json_payload += "}";
-        // event = ""; 
-        // status = ""; 
-        // id = ""; 
-        // similarity = ""; 
         if (event_bits & DELETE) {
-            // event += "DELETE"; 
             esp_err_t ret = m_recognizer->delete_last_feat();
             if (m_recognition_result_cb) {
                 if (ret == ESP_FAIL) {
                     m_recognition_result_cb("Failed to delete.");
-                    // status += "0"; 
                 } else {
                     int num_feats = m_recognizer->get_num_feats() + 1; 
                     m_recognition_result_cb(std::format("id: {} deleted.", num_feats));
-                    // status += "1"; 
-                    // id += std::to_string(num_feats); 
                 }
             }
         }
     }
     xEventGroupSetBits(m_event_group, TASK_STOPPED);
     vTaskDelete(NULL);
-    // json_payload = "{"; 
-    // json_payload += "\"event\":\"" + event + "\",";
-    // json_payload += "\"status\":" + status + ",";
-    // json_payload += "\"id\":" + id + ",";
-    // json_payload += "\"similarity\":" + similarity;
-    // json_payload += "}";
     tcp_close(); 
 }
 
