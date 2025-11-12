@@ -52,10 +52,50 @@ bool WhoRecognitionCore::run(const configSTACK_DEPTH_TYPE uxStackDepth,
     return task::WhoTask::run(uxStackDepth, uxPriority, xCoreID);
 }
 
+void WhoRecognitionCore::message_handler(int flag)
+{
+    switch (flag)
+    {
+    case 1:
+        // motion is detected, do a scan every 1 second
+        xEventGroupSetBits(m_event_group, RECOGNIZE);
+        ESP_LOGI("WhoRecognitionCore", "Motion detected, attempt to recognize");
+        break;
+    case 0:
+        // motion disappears, don't do anything
+        ESP_LOGI("WhoRecognitionCore", "No motion as of now, rest...");
+    default:
+        ESP_LOGI("WhoRecognitionCore", "Unknown flag %d received", flag);
+        break;
+    }
+}
+
 void WhoRecognitionCore::task()
 {
-    tcp_connect("172.20.10.11", 5500); 
+    tcp_connect("172.20.10.11", 5500);
+    // handle detection
+    /*
+    if motion detected: detect face
+    if motion disappeared: stop detect and stand by
+    if no face is detected: repeat after x seconds
+    if a known face detected: send picture and stand by
+    if an unknown face detected: send picture and video stream
+
+    */
+
     while (true) {
+        // receive message from motion sensor
+        char buf[8];
+        int r = recv(sock, buf, sizeof(buf) - 1, MSG_DONTWAIT);
+        if (r > 0) {
+            // received a message
+            buf[r] = '\0';
+            int flag = atoi((char*)buf);
+            message_handler(flag);
+        } else if (r < 0) {
+            ESP_LOGI("WhoRecognitionCore", "TCP reception failed");
+        }
+
         EventBits_t event_bits = xEventGroupWaitBits(
             m_event_group, RECOGNIZE | ENROLL | DELETE | TASK_PAUSE | TASK_STOP, pdTRUE, pdFALSE, portMAX_DELAY);
         // event = ""; 
