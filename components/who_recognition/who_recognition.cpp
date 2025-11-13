@@ -11,6 +11,8 @@
 #include "who_recognition.hpp"
 #include <string>
 
+#include "who_recognition.hpp"
+#include "shared_mem.hpp"
 #include "tcp_client.cpp"
 
 // Global variables for building JSON payload
@@ -80,6 +82,42 @@ bool WhoRecognitionCore::run(const configSTACK_DEPTH_TYPE uxStackDepth,
 // MAIN TASK - CORE LOGIC
 // ============================================================================
 
+void WhoRecognitionCore::message_handler(int flag)
+{
+    /*
+    0: stop streaming, dont do anything
+    1: make a recognition while streaming
+    2: send a picture and stop streaming
+    3: keep streaming
+    */
+    switch (flag)
+    {
+    case 3:
+        set_flag(&shared_mem.stream_flag, 3);
+        ESP_LOGI("Shared mem", "An unknown face detected, streaming");
+        break;
+    case 2:
+        set_flag(&shared_mem.stream_flag, 2);
+        ESP_LOGI("Shared mem", "A known face detected, stop streaming");
+        break;
+    case 1:
+        // motion is detected, do a scan
+        xEventGroupSetBits(m_event_group, RECOGNIZE);
+        // stream video
+        set_flag(&shared_mem.stream_flag, 1);
+        ESP_LOGI("Shared mem", "Motion detected, attempt to recognize");
+        break;
+    case 0:
+        set_flag(&shared_mem.stream_flag, 0);
+        // stop streaming and standby
+        ESP_LOGI("Shared mem", "Streaming stops, standby");
+        break;
+    default:
+        ESP_LOGI("Shared mem", "Unknown flag %d received", flag);
+        break;
+    }
+}
+
 void WhoRecognitionCore::task()
 {
     // ════════════════════════════════════════════════════════════════════
@@ -147,6 +185,18 @@ void WhoRecognitionCore::task()
     
     while (true) {
         // Wait for event (RECOGNIZE, ENROLL, DELETE, PAUSE, STOP)
+        // receive message from motion sensor
+        char buf[8];
+        int r = recv(sock, buf, sizeof(buf) - 1, MSG_DONTWAIT);
+        if (r > 0) {
+            // received a message
+            buf[r] = '\0';
+            int flag = atoi((char*)buf);
+            message_handler(flag);
+        } else if (r < 0) {
+            ESP_LOGI("WhoRecognitionCore", "TCP reception failed");
+        }
+
         EventBits_t event_bits = xEventGroupWaitBits(
             m_event_group, 
             RECOGNIZE | ENROLL | DELETE | TASK_PAUSE | TASK_STOP, 
@@ -227,6 +277,9 @@ void WhoRecognitionCore::task()
                         ESP_LOGW("WhoRecognitionCore", "└────────────────────────────────────────┘");
                         ESP_LOGW("WhoRecognitionCore", "");
                         
+
+                        // tell webpage to keep streaming
+                        message_handler(3);
                     } else {
                         // Face recognized!
                         std::string result_str = std::format("id: {}, sim: {:.2f}", 
@@ -248,6 +301,14 @@ void WhoRecognitionCore::task()
                     }
                     
                     // Restore original detect callback
+                        m_recognition_result_cb(std::format("id: {}, sim: {:.2f}", ret[0].id, ret[0].similarity));
+                        status += "1"; 
+                        id += std::to_string(ret[0].id); 
+                        similarity += std::to_string(ret[0].similarity); 
+
+                        // tell web page to send a picture and stop streaming
+                        message_handler(2);
+                    }
                     m_detect->set_detect_result_cb(m_detect_result_cb);
                     
                     // ════════════════════════════════════════════════════
