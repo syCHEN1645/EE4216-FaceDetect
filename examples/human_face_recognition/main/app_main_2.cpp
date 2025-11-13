@@ -13,8 +13,8 @@ using namespace who::frame_cap;
 using namespace who::app;
 
 // WiFi credentials
-#define WIFI_SSID "E18" //"DMTP5"
-#define WIFI_PASSWORD "bm8n2dbbvj0y0"  //"decOmaster5"
+#define WIFI_SSID "abc"
+#define WIFI_PASSWORD "33333333"
 // WiFi connection settings
 #define MAX_RETRY 5
 #define WIFI_CONNECTED_BIT BIT0
@@ -45,7 +45,6 @@ static void event_handler(
                 esp_wifi_connect();
                 s_retry_num++;
                 ESP_LOGI(TAG_WIFI, "Disconnect event, retry to connect to the AP");
-                vTaskDelay(pdMS_TO_TICKS(10));
             } else {
                 xEventGroupSetBits(wifi_event_group, WIFI_CONNECT_FAIL_BIT);
             }
@@ -68,7 +67,7 @@ static void event_handler(
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         if (!server) {
             ESP_LOGI(TAG_WIFI, "Starting http server now at " IPSTR, IP2STR(&event->ip_info.ip));
-            init_http(server);
+            server = init_http();
         }
     }
 }
