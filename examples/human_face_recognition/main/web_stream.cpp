@@ -30,38 +30,31 @@ const char index_html[] = R"rawliteral(
   <meta charset="utf-8">
   <title>ESP Stream + Alerts</title>
   <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      background: #8ff4a3ff;
-    }
-    img {
-      width: 480px;
-      border: 3px solid #333;
-      border-radius: 10px;
-    }
+    body { font-family: sans-serif; text-align: center; background: #8ff4a3; }
+    img { border: 3px solid #333; border-radius: 10px; margin-bottom: 10px; }
+    #video { width: 480px; }
+    #snapshot { width: 480px; }
     #log {
-      width: 480px;
-      height: 200px;
-      margin: 15px auto;
-      background: #d1df84ff;
-      border: 2px solid #333;
-      border-radius: 10px;
-      overflow-y: scroll;
-      text-align: left;
-      padding: 10px;
-      font-size: 16px;
+      width: 480px; height: 200px; margin: 15px auto;
+      background: #d1df84; border: 2px solid #333;
+      border-radius: 10px; overflow-y: scroll;
+      text-align: left; padding: 10px; font-size: 16px;
     }
   </style>
 </head>
 <body>
   <h1>ESP32 Camera Stream</h1>
   <img id="video" src="/stream" />
+  
+  <h2>Latest Captured Frame</h2>
+  <img id="snapshot" src="" alt="No snapshot yet" />
+
   <h2>Event Log</h2>
   <div id="log"></div>
 
   <script>
     const logBox = document.getElementById("log");
+    const snapshot = document.getElementById("snapshot");
     const evtSource = new EventSource("/events");
 
     evtSource.onmessage = function(event) {
@@ -69,7 +62,12 @@ const char index_html[] = R"rawliteral(
       const line = document.createElement("div");
       line.textContent = `[${now}] ${event.data}`;
       logBox.appendChild(line);
-      logBox.scrollTop = logBox.scrollHeight; // Auto-scroll to bottom
+      logBox.scrollTop = logBox.scrollHeight;
+
+      if (event.data.includes("Known visitor detected")) {
+        // Force reload of snapshot (avoid caching with random query)
+        snapshot.src = `/capture?nocache=${Date.now()}`;
+      }
     };
 
     evtSource.onerror = function(e) {
@@ -90,27 +88,32 @@ static esp_err_t info_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/event-stream");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    int old_flag = 0;
 
     while (true) {
         int flag = get_flag(&shared_mem.stream_flag);
         const char *msg = nullptr;
-
-        if (flag == 2) {
-            msg = "Known visitor detected!";
-        } else if (flag == 1) {
-            msg = "Motion detected but failed to recognise!";
-        } else if (flag == 3) {
-            msg = "Unknown visitor detected!";
+        if (flag != old_flag) {
+            if (flag == 2) {
+                ESP_LOGI("info handler", "flag=2");
+                msg = "Known visitor detected!";
+            } else if (flag == 1) {
+                ESP_LOGI("info handler", "flag=1");
+                msg = "Unknown visitor detected!";
+            } else if (flag == 3) {
+                ESP_LOGI("info handler", "flag=3");
+                msg = "Motion detected!";
+            }
+            old_flag = flag;
+            char buffer[128];
+            int len = snprintf(buffer, sizeof(buffer), "data: %s\n\n", msg);
+            esp_err_t res = httpd_resp_send_chunk(req, buffer, len);
+            if (res != ESP_OK) {
+                ESP_LOGW(TAG, "Sending text info failed.");
+                return res;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
-        char buffer[128];
-        int len = snprintf(buffer, sizeof(buffer), "data: %s\n\n", msg);
-        esp_err_t res = httpd_resp_send_chunk(req, buffer, len);
-        if (res != ESP_OK) {
-            ESP_LOGW(TAG, "Sending text info failed.");
-            return res;
-        }
-        ESP_LOGW(TAG, "Info handler interval...");
-        vTaskDelay(pdMS_TO_TICKS(500));
     }
 
     return ESP_OK;
@@ -178,30 +181,16 @@ static esp_err_t stream_handler(httpd_req_t *req) {
                 break;
             }
             // ESP_LOGI(TAG, "JPEG frame size=%u bytes", jpg_buf_len);
-
-            // Signal end of this frame
-            // res = httpd_resp_send_chunk(req, NULL, 0);
-            // ESP_LOGI(TAG, "FRAME END (NULL) -> res=%d (%s)", res, esp_err_to_name(res));
-            // if (res != ESP_OK) {
-            //     break;
-            // }
-
-            // ESP_LOGI(TAG, "A frame was just sent to server");
-            
             vTaskDelay(pdMS_TO_TICKS(120));
         } else if (flag == 2) {
-            // send a picture and standby
-            // before coming to this step, the stream was already on
-            // hence no need to send a separate picture, just keep showing the last frame
-            vTaskDelay(pdMS_TO_TICKS(200));
-            set_flag(&shared_mem.stream_flag, 0);
+            // another handler (capture handler) will send a frame
+            // pause streaming until a motion triggers
+            vTaskDelay(pdMS_TO_TICKS(1000));
         } else if (flag == 0) {
             // do nothing
-            ESP_LOGI(TAG, "Standby...");
-            vTaskDelay(pdMS_TO_TICKS(3000));
+            // pause a second and start streaming
+            vTaskDelay(pdMS_TO_TICKS(1000));
             set_flag(&shared_mem.stream_flag, 1);
-        } else {
-            //
         }
     }
 
@@ -213,7 +202,40 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     jpg_buf = NULL;
     // Program comes here only if errors happen
     ESP_LOGE(TAG, "An error occured when streaming video");
-    return res;        
+    return res;
+}
+
+static esp_err_t capture_handler(httpd_req_t *req)
+{
+    esp_err_t res;
+    size_t jpg_buf_len = 0;
+    uint8_t *jpg_buf = NULL;
+    camera_fb_t *cam_fb = esp_camera_fb_get();
+    if (!cam_fb) {
+        ESP_LOGE("Frame", "Camera capture failed");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    // Make sure frame is of JPG before sending
+    bool converted = frame2jpg(cam_fb, 80, &jpg_buf, &jpg_buf_len);
+    // return frame buffer
+    esp_camera_fb_return(cam_fb);
+    if (!converted) {
+        ESP_LOGI(TAG, "JPEG conversion failed");
+        res = ESP_FAIL;
+        return res;
+    }
+
+    httpd_resp_set_type(req, "image/jpeg");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    res = httpd_resp_send(req, (const char *)jpg_buf, jpg_buf_len);
+    free(jpg_buf);
+    jpg_buf = NULL;
+    if (res != ESP_OK) {
+        return res;
+    }
+    return ESP_OK;
 }
 
 static esp_err_t html_code_handler(httpd_req_t *req) {
@@ -237,6 +259,7 @@ httpd_handle_t init_http() {
         return NULL;
     }
 
+    // for set up webpage
     httpd_uri_t html_uri = {
     .uri       = "/",
     .method    = HTTP_GET,
@@ -245,14 +268,25 @@ httpd_handle_t init_http() {
     };
     httpd_register_uri_handler(server, &html_uri);    
 
+    // for display text info
     httpd_uri_t info_uri = {
-    .uri       = "/",
+    .uri       = "/events",
     .method    = HTTP_GET,
     .handler   = info_handler,
     .user_ctx  = NULL
     };
     httpd_register_uri_handler(server, &info_uri);
 
+    // for capture single frame
+    httpd_uri_t capture_uri = {
+        .uri = "/capture",
+        .method = HTTP_GET,
+        .handler = capture_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &capture_uri);
+
+    // for stream video
     httpd_uri_t stream_uri = {
         .uri = "/stream",
         .method = HTTP_GET,
@@ -266,6 +300,7 @@ httpd_handle_t init_http() {
     #endif
     };
     httpd_register_uri_handler(server, &stream_uri);
+
     ESP_LOGI(TAG, "Http server started successfully");
     return server;
 }

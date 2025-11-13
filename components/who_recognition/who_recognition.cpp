@@ -80,41 +80,6 @@ bool WhoRecognitionCore::run(const configSTACK_DEPTH_TYPE uxStackDepth,
 // MAIN TASK - CORE LOGIC
 // ============================================================================
 
-// void WhoRecognitionCore::message_handler(int flag)
-// {
-//     /*
-//     0: stop streaming, dont do anything
-//     1: make a recognition while streaming
-//     2: send a picture and stop streaming
-//     3: keep streaming
-//     */
-//     switch (flag)
-//     {
-//     case 3:
-//         set_flag(&shared_mem.stream_flag, 3);
-//         ESP_LOGI("Shared mem", "An unknown face detected, streaming");
-//         break;
-//     case 2:
-//         set_flag(&shared_mem.stream_flag, 2);
-//         ESP_LOGI("Shared mem", "A known face detected, stop streaming");
-//         break;
-//     case 1:
-//         // motion is detected, do a scan
-//         xEventGroupSetBits(m_event_group, RECOGNIZE);
-//         // stream video
-//         set_flag(&shared_mem.stream_flag, 1);
-//         ESP_LOGI("Shared mem", "Motion detected, attempt to recognize");
-//         break;
-//     case 0:
-//         set_flag(&shared_mem.stream_flag, 0);
-//         // stop streaming and standby
-//         ESP_LOGI("Shared mem", "Streaming stops, standby");
-//         break;
-//     default:
-//         ESP_LOGI("Shared mem", "Unknown flag %d received", flag);
-//         break;
-//     }
-// }
 
 void WhoRecognitionCore::task()
 {
@@ -170,7 +135,7 @@ void WhoRecognitionCore::task()
         
         // Start background task to receive PIR trigger commands
         // =====================================================
-        xTaskCreate(tcp_recv, "tcp_poll_recv", 4096, NULL, 5, NULL);
+        xTaskCreatePinnedToCore(tcp_recv, "tcp_poll_recv", 4096, NULL, 5, NULL, 0);
         
         ESP_LOGI("WhoRecognitionCore", "✓ System ready");
         ESP_LOGI("WhoRecognitionCore", "  - PIR motion will trigger face recognition");
@@ -183,25 +148,7 @@ void WhoRecognitionCore::task()
     // ════════════════════════════════════════════════════════════════════
     
     while (true) {
-        // Wait for event (RECOGNIZE, ENROLL, DELETE, PAUSE, STOP)
-        // receive message from motion sensor
-        // char buf[8];
-        // int r = recv(sock, buf, sizeof(buf) - 1, MSG_DONTWAIT);
-        // if (r > 0) {
-        //     // received a message
-        //     buf[r] = '\0';
-        //     int flag = atoi((char*)buf);
-        //     message_handler(flag);
-        // } else if (r < 0) {
-        //     ESP_LOGI("WhoRecognitionCore", "TCP reception failed");
-        // }
-
-        // if (get_flag(&shared_mem.stream_flag) == 1) {
-        //     xEventGroupSetBits(m_event_group, RECOGNIZE);
-        // }
-
         // vTaskDelay(pdMS_TO_TICKS(100));
-
         EventBits_t event_bits = xEventGroupWaitBits(
             m_event_group, 
             RECOGNIZE | ENROLL | DELETE | TASK_PAUSE | TASK_STOP, 
@@ -216,24 +163,24 @@ void WhoRecognitionCore::task()
         }
         
         // Handle PAUSE event
-        if (event_bits & TASK_PAUSE) {
-            ESP_LOGI("WhoRecognitionCore", "Task paused");
-            xEventGroupSetBits(m_event_group, TASK_PAUSED);
+        // if (event_bits & TASK_PAUSE) {
+        //     ESP_LOGI("WhoRecognitionCore", "Task paused");
+        //     xEventGroupSetBits(m_event_group, TASK_PAUSED);
             
-            EventBits_t pause_event_bits = xEventGroupWaitBits(
-                m_event_group, 
-                TASK_RESUME | TASK_STOP, 
-                pdTRUE, 
-                pdFALSE, 
-                portMAX_DELAY);
+        //     EventBits_t pause_event_bits = xEventGroupWaitBits(
+        //         m_event_group, 
+        //         TASK_RESUME | TASK_STOP, 
+        //         pdTRUE, 
+        //         pdFALSE, 
+        //         portMAX_DELAY);
             
-            if (pause_event_bits & TASK_STOP) {
-                break;
-            } else {
-                ESP_LOGI("WhoRecognitionCore", "Task resumed");
-                continue;
-            }
-        }
+        //     if (pause_event_bits & TASK_STOP) {
+        //         break;
+        //     } else {
+        //         ESP_LOGI("WhoRecognitionCore", "Task resumed");
+        //         continue;
+        //     }
+        // }
         
         // ════════════════════════════════════════════════════════════════
         // HANDLE RECOGNIZE EVENT (PIR TRIGGERED)
@@ -303,14 +250,14 @@ void WhoRecognitionCore::task()
                         ESP_LOGI("WhoRecognitionCore", "  Similarity:  %.2f (%.1f%%)", 
                                 ret[0].similarity, ret[0].similarity * 100);
                         ESP_LOGI("WhoRecognitionCore", "");
-                        // tell web page to send a picture and stop streaming
+                        // tell web page to send a picture
+                        // pause streaming
                         message_handler(2);
-                    }                
+                    }
                     // Restore original detect callback
                     m_detect->set_detect_result_cb(m_detect_result_cb);
                 }
-                
-                
+
                 // ════════════════════════════════════════════════════
                 // BUILD AND SEND JSON TO GATEWAY
                 // ════════════════════════════════════════════════════

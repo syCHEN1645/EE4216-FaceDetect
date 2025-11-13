@@ -206,10 +206,9 @@ void tcp_recv(void *pvParameters)
                 ESP_LOGI(TAG, "Face recognition will be triggered...");
                 ESP_LOGI(TAG, "");
 
-                message_handler(2);
+                // set to 3 to start streaming
+                message_handler(3);
                 
-                // The recognition task will automatically process this
-                // because RECOGNIZE mode is always active
             } else {
                 ESP_LOGI(TAG, "Unknown command: %s", buffer);
             }
