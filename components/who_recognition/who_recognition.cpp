@@ -59,27 +59,32 @@ void WhoRecognitionCore::message_handler(int flag)
     0: stop streaming, dont do anything
     1: make a recognition while streaming
     2: send a picture and stop streaming
+    3: keep streaming
     */
     switch (flag)
     {
+    case 3:
+        set_flag(&shared_mem.stream_flag, 3);
+        ESP_LOGI("Shared mem", "An unknown face detected, streaming");
+        break;
     case 2:
         set_flag(&shared_mem.stream_flag, 2);
-        ESP_LOGI("WhoRecognitionCore", "A known face detected, stop streaming");
+        ESP_LOGI("Shared mem", "A known face detected, stop streaming");
         break;
     case 1:
         // motion is detected, do a scan
         xEventGroupSetBits(m_event_group, RECOGNIZE);
         // stream video
         set_flag(&shared_mem.stream_flag, 1);
-        ESP_LOGI("WhoRecognitionCore", "Motion detected, attempt to recognize");
+        ESP_LOGI("Shared mem", "Motion detected, attempt to recognize");
         break;
     case 0:
         set_flag(&shared_mem.stream_flag, 0);
         // stop streaming and standby
-        ESP_LOGI("WhoRecognitionCore", "Streaming stops, standby");
+        ESP_LOGI("Shared mem", "Streaming stops, standby");
         break;
     default:
-        ESP_LOGI("WhoRecognitionCore", "Unknown flag %d received", flag);
+        ESP_LOGI("Shared mem", "Unknown flag %d received", flag);
         break;
     }
 }
@@ -87,6 +92,7 @@ void WhoRecognitionCore::message_handler(int flag)
 void WhoRecognitionCore::task()
 {
     tcp_connect("172.20.10.11", 5500);
+    ESP_LOGI("TCP", "TCP connect function ends");
     // handle detection
     /*
     if motion detected: detect face
@@ -152,7 +158,7 @@ void WhoRecognitionCore::task()
                         status += "0"; 
 
                         // tell webpage to keep streaming
-                        message_handler(1);
+                        message_handler(3);
                     } else {
                         m_recognition_result_cb(std::format("id: {}, sim: {:.2f}", ret[0].id, ret[0].similarity));
                         status += "1"; 

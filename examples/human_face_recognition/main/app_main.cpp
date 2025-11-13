@@ -8,6 +8,7 @@
 #include "who_recognition_app_term.hpp"
 #include "who_spiflash_fatfs.hpp"
 #include "web_stream.cpp"
+#include "shared_mem.hpp"
 
 using namespace who::frame_cap;
 using namespace who::app;
@@ -134,6 +135,7 @@ extern "C" void app_main(void)
     auto frame_cap = get_mipi_csi_frame_cap_pipeline();
     // auto frame_cap = get_uvc_frame_cap_pipeline();
 #endif
+    shared_mem_init();
     init_wifi();
     // hold until connection success
     EventBits_t bits = xEventGroupWaitBits(

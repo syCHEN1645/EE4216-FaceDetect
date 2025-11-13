@@ -46,7 +46,8 @@ const char index_html[] = R"rawliteral(
     const evtSource = new EventSource("/events");
     evtSource.onmessage = function(event) {
       alertBox.textContent = event.data;
-      setTimeout(() => alertBox.textContent = "", 4000); // clear after 4s
+      // clear after a few seconds
+      setTimeout(() => alertBox.textContent = "", 3000); 
     };
   </script>
 </body>
@@ -61,20 +62,23 @@ static esp_err_t info_handler(httpd_req_t *req) {
 
     while (true) {
         int flag = get_flag(&shared_mem.stream_flag);
+        const char *msg = nullptr;
 
         if (flag == 2) {
-            const char* msg = "Known visitor detected!";
-            char buffer[128];
-            int len = snprintf(buffer, sizeof(buffer), "info: %s\n\n", msg);
-            esp_err_t res = httpd_resp_send_chunk(req, buffer, len);
-            if (res != ESP_OK) {
-                ESP_LOGW(TAG, "Sending text info failed.");
-                break;
-            }
-        } else if (flag == 0) {
-            // 
+            msg = "Known visitor detected!";
+        } else if (flag == 1) {
+            msg = "Motion detected but failed to recognise!";
+        } else if (flag == 3) {
+            msg = "Unknown visitor detected!";
         }
-
+        char buffer[128];
+        int len = snprintf(buffer, sizeof(buffer), "data: %s\n\n", msg);
+        esp_err_t res = httpd_resp_send_chunk(req, buffer, len);
+        if (res != ESP_OK) {
+            ESP_LOGW(TAG, "Sending text info failed.");
+            return res;
+        }
+        ESP_LOGW(TAG, "Info handler interval...");
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 
@@ -100,14 +104,14 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     while (true) {
         int flag = get_flag(&shared_mem.stream_flag);
 
-        if (flag == 1) {
+        if (flag == 1 || flag == 3) {
             cam_fb = esp_camera_fb_get();
             // Handle when no frame captured
             if (!cam_fb) {
                 ESP_LOGE(TAG, "Camera capture failed");
                 return ESP_FAIL;
             }
-            ESP_LOGI(TAG, "FRAME INFO: len=%u format=%d", (unsigned)cam_fb->len, cam_fb->format);
+            // ESP_LOGI(TAG, "FRAME INFO: len=%u format=%d", (unsigned)cam_fb->len, cam_fb->format);
             
             // Make sure frame is of JPG before sending
             bool converted = frame2jpg(cam_fb, 80, &jpg_buf, &jpg_buf_len);
@@ -123,7 +127,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
             if (res != ESP_OK) {
                 break;
             }
-            ESP_LOGI(TAG, "Boundary sent, res=%d", res);
+            // ESP_LOGI(TAG, "Boundary sent, res=%d", res);
             
             // Send payboad string
             // snprintf: put formatted string into buffer
@@ -133,7 +137,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
             if (res != ESP_OK) {
                 break;
             }
-            ESP_LOGI(TAG, "Payload sent, res=%d, jpg_len=%d", res, jpg_buf_len);
+            // ESP_LOGI(TAG, "Payload sent, res=%d, jpg_len=%d", res, jpg_buf_len);
 
             // Send actual frame
             res = httpd_resp_send_chunk(req, (const char *)jpg_buf, jpg_buf_len);
@@ -142,7 +146,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
             if (res != ESP_OK) {
                 break;
             }
-            ESP_LOGI(TAG, "JPEG frame size=%u bytes", jpg_buf_len);
+            // ESP_LOGI(TAG, "JPEG frame size=%u bytes", jpg_buf_len);
 
             // Signal end of this frame
             // res = httpd_resp_send_chunk(req, NULL, 0);
@@ -150,7 +154,8 @@ static esp_err_t stream_handler(httpd_req_t *req) {
             // if (res != ESP_OK) {
             //     break;
             // }
-            ESP_LOGI(TAG, "A frame was just sent to server");
+
+            // ESP_LOGI(TAG, "A frame was just sent to server");
             
             vTaskDelay(pdMS_TO_TICKS(120));
         } else if (flag == 2) {
@@ -179,6 +184,11 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     return res;        
 }
 
+static esp_err_t html_code_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, index_html, strlen(index_html));
+}
+
 
 httpd_handle_t init_http() {
     httpd_handle_t server;
@@ -194,6 +204,14 @@ httpd_handle_t init_http() {
         ESP_LOGE(TAG, "Error starting http server");
         return NULL;
     }
+
+    httpd_uri_t html_uri = {
+    .uri       = "/",
+    .method    = HTTP_GET,
+    .handler   = html_code_handler,
+    .user_ctx  = NULL
+    };
+    httpd_register_uri_handler(server, &html_uri);    
 
     httpd_uri_t info_uri = {
     .uri       = "/",
