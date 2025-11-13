@@ -298,16 +298,14 @@ void WhoRecognitionCore::task()
                         ESP_LOGI("WhoRecognitionCore", "  Similarity:  %.2f (%.1f%%)", 
                                 ret[0].similarity, ret[0].similarity * 100);
                         ESP_LOGI("WhoRecognitionCore", "");
-                    }
-                    
-                    // Restore original detect callback
+                        // tell web page to send a picture and stop streaming
+                        message_handler(2);
+                    }                
+                        // Restore original detect callback
                         m_recognition_result_cb(std::format("id: {}, sim: {:.2f}", ret[0].id, ret[0].similarity));
                         status += "1"; 
                         id += std::to_string(ret[0].id); 
                         similarity += std::to_string(ret[0].similarity); 
-
-                        // tell web page to send a picture and stop streaming
-                        message_handler(2);
                     }
                     m_detect->set_detect_result_cb(m_detect_result_cb);
                     
