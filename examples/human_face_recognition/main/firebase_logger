@@ -1,0 +1,199 @@
+/**
+ * Firebase Logger - Direct upload to Firebase Realtime Database
+ * 
+ * This file handles sending face detection data directly to Firebase
+ * without needing a second ESP32 gateway.
+ */
+
+#include "firebase_logger.h"
+#include "esp_log.h"
+#include "esp_http_client.h"
+#include "cJSON.h"
+#include <string.h>
+#include <sys/time.h>
+
+// ============================================================================
+// CONFIGURATION - CHANGE THESE VALUES
+// ============================================================================
+#define FIREBASE_HOST "YOUR-PROJECT-ID-default-rtdb.firebaseio.com"
+#define FIREBASE_AUTH "YOUR_DATABASE_SECRET"
+#define FIREBASE_PATH "/detections"
+
+static const char *TAG = "FIREBASE";
+static bool firebase_enabled = false;
+
+// ============================================================================
+// HTTP Event Handler for debugging
+// ============================================================================
+static esp_err_t http_event_handler(esp_http_client_event_t *evt)
+{
+    switch(evt->event_id) {
+        case HTTP_EVENT_ON_DATA:
+            ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
+            if (!esp_http_client_is_chunked_response(evt->client)) {
+                ESP_LOGD(TAG, "Response: %.*s", evt->data_len, (char*)evt->data);
+            }
+            break;
+        case HTTP_EVENT_ERROR:
+            ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
+            break;
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+
+// ============================================================================
+// Initialize Firebase Logger
+// ============================================================================
+esp_err_t firebase_logger_init(void)
+{
+    firebase_enabled = true;
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "Firebase Logger Initialized");
+    ESP_LOGI(TAG, "Host: %s", FIREBASE_HOST);
+    ESP_LOGI(TAG, "========================================");
+    return ESP_OK;
+}
+
+// ============================================================================
+// Main function: Log face detection to Firebase
+// ============================================================================
+esp_err_t firebase_log_detection(const char *person_id, float confidence,
+                                 int x, int y, int w, int h)
+{
+    if (!firebase_enabled) {
+        ESP_LOGW(TAG, "Firebase logger not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    ESP_LOGI(TAG, "Logging detection: person=%s, conf=%.2f", 
+             person_id ? person_id : "unknown", confidence);
+
+    // ========================================================================
+    // Step 1: Get timestamp for unique key
+    // ========================================================================
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    uint64_t timestamp = (uint64_t)tv.tv_sec * 1000ULL + (uint64_t)tv.tv_usec / 1000ULL;
+
+    // ========================================================================
+    // Step 2: Create JSON payload
+    // ========================================================================
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        ESP_LOGE(TAG, "Failed to create JSON object");
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Add detection metadata
+    cJSON_AddNumberToObject(root, "timestamp", timestamp);
+    cJSON_AddNumberToObject(root, "face_count", 1);
+    cJSON_AddNumberToObject(root, "confidence", confidence);
+    cJSON_AddStringToObject(root, "person_id", person_id ? person_id : "unknown");
+    
+    // Add bounding box
+    cJSON *bbox = cJSON_CreateObject();
+    cJSON_AddNumberToObject(bbox, "x", x);
+    cJSON_AddNumberToObject(bbox, "y", y);
+    cJSON_AddNumberToObject(bbox, "w", w);
+    cJSON_AddNumberToObject(bbox, "h", h);
+    cJSON_AddItemToObject(root, "bounding_box", bbox);
+    
+    // Add device information
+    cJSON_AddStringToObject(root, "device", "ESP32-S3-EYE");
+    cJSON_AddStringToObject(root, "source", "face_recognition");
+
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(root);
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "Failed to serialize JSON");
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
+    }
+
+    ESP_LOGI(TAG, "JSON payload: %s", json_str);
+
+    // ========================================================================
+    // Step 3: Build Firebase REST API URL
+    // Format: https://HOST/PATH/TIMESTAMP.json?auth=SECRET
+    // ========================================================================
+    char url[512];
+    snprintf(url, sizeof(url), 
+             "https://%s%s/%llu.json?auth=%s",
+             FIREBASE_HOST, FIREBASE_PATH, timestamp, FIREBASE_AUTH);
+
+    ESP_LOGD(TAG, "URL: %s", url);
+
+    // ========================================================================
+    // Step 4: Configure HTTPS client
+    // ========================================================================
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = HTTP_METHOD_PUT,  // PUT to create/update specific key
+        .event_handler = http_event_handler,
+        .timeout_ms = 10000,
+        .buffer_size = 2048,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client");
+        free(json_str);
+        cJSON_Delete(root);
+        return ESP_FAIL;
+    }
+
+    // Set headers
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, json_str, strlen(json_str));
+
+    // ========================================================================
+    // Step 5: Perform HTTPS request to Firebase
+    // ========================================================================
+    ESP_LOGI(TAG, "Uploading to Firebase...");
+    esp_err_t err = esp_http_client_perform(client);
+
+    if (err == ESP_OK) {
+        int status_code = esp_http_client_get_status_code(client);
+        int content_length = esp_http_client_get_content_length(client);
+        
+        ESP_LOGI(TAG, "HTTP Status: %d, Content-Length: %d", 
+                 status_code, content_length);
+        
+        if (status_code == 200) {
+            ESP_LOGI(TAG, "✓ Successfully uploaded to Firebase!");
+        } else {
+            ESP_LOGW(TAG, "Firebase returned status: %d", status_code);
+            err = ESP_FAIL;
+        }
+    } else {
+        ESP_LOGE(TAG, "✗ HTTP request failed: %s", esp_err_to_name(err));
+    }
+
+    // ========================================================================
+    // Step 6: Cleanup
+    // ========================================================================
+    esp_http_client_cleanup(client);
+    free(json_str);
+    cJSON_Delete(root);
+
+    return err;
+}
+
+// ============================================================================
+// Enable/Disable Firebase logging
+// ============================================================================
+void firebase_logger_enable(bool enable)
+{
+    firebase_enabled = enable;
+    ESP_LOGI(TAG, "Firebase logging %s", enable ? "enabled" : "disabled");
+}
+
+// ============================================================================
+// Check if Firebase is enabled
+// ============================================================================
+bool firebase_logger_is_enabled(void)
+{
+    return firebase_enabled;
+}
