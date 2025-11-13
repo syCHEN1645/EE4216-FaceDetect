@@ -1,6 +1,7 @@
-#include "who_recognition.hpp"
 #include <string>
 
+#include "who_recognition.hpp"
+#include "shared_mem.hpp"
 #include "tcp_client.cpp"
 
 std::string event; 
@@ -54,16 +55,29 @@ bool WhoRecognitionCore::run(const configSTACK_DEPTH_TYPE uxStackDepth,
 
 void WhoRecognitionCore::message_handler(int flag)
 {
+    /*
+    0: stop streaming, dont do anything
+    1: make a recognition while streaming
+    2: send a picture and stop streaming
+    */
     switch (flag)
     {
+    case 2:
+        set_flag(&shared_mem.stream_flag, 2);
+        ESP_LOGI("WhoRecognitionCore", "A known face detected, stop streaming");
+        break;
     case 1:
-        // motion is detected, do a scan every 1 second
+        // motion is detected, do a scan
         xEventGroupSetBits(m_event_group, RECOGNIZE);
+        // stream video
+        set_flag(&shared_mem.stream_flag, 1);
         ESP_LOGI("WhoRecognitionCore", "Motion detected, attempt to recognize");
         break;
     case 0:
-        // motion disappears, don't do anything
-        ESP_LOGI("WhoRecognitionCore", "No motion as of now, rest...");
+        set_flag(&shared_mem.stream_flag, 0);
+        // stop streaming and standby
+        ESP_LOGI("WhoRecognitionCore", "Streaming stops, standby");
+        break;
     default:
         ESP_LOGI("WhoRecognitionCore", "Unknown flag %d received", flag);
         break;
@@ -80,7 +94,6 @@ void WhoRecognitionCore::task()
     if no face is detected: repeat after x seconds
     if a known face detected: send picture and stand by
     if an unknown face detected: send picture and video stream
-
     */
 
     while (true) {
@@ -137,11 +150,17 @@ void WhoRecognitionCore::task()
                     if (ret.empty()) {
                         m_recognition_result_cb("who?");
                         status += "0"; 
+
+                        // tell webpage to keep streaming
+                        message_handler(1);
                     } else {
                         m_recognition_result_cb(std::format("id: {}, sim: {:.2f}", ret[0].id, ret[0].similarity));
                         status += "1"; 
                         id += std::to_string(ret[0].id); 
                         similarity += std::to_string(ret[0].similarity); 
+
+                        // tell web page to send a picture and stop streaming
+                        message_handler(2);
                     }
                     m_detect->set_detect_result_cb(m_detect_result_cb);
                     json_payload = "{"; 
