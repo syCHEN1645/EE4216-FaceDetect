@@ -17,14 +17,16 @@
 #include "freertos/task.h"
 #include <string>
 
+#include "shared_mem.hpp"
+
 static const char *TAG = "TCP_CLIENT";
 static const int ip_protocol = 0;  
 static int sock = -1; 
 static const int max_retry = 5;
 static bool connection_active = false;
 
-const char* server_ip = "172.20.10.14";   // Arduino gateway IP
-const int port = 5500;
+// const char* server_ip = "172.20.10.14";   // Arduino gateway IP
+// const int port = 5500;
 // #define GATEWAY_IP   "192.168.68.103"    // MUST match the gateway printout
 // #define GATEWAY_PORT 5500
 
@@ -203,6 +205,8 @@ void tcp_recv(void *pvParameters)
                 ESP_LOGI(TAG, "Motion detected by gateway PIR sensor");
                 ESP_LOGI(TAG, "Face recognition will be triggered...");
                 ESP_LOGI(TAG, "");
+
+                message_handler(2);
                 
                 // The recognition task will automatically process this
                 // because RECOGNIZE mode is always active

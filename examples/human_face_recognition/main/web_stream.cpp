@@ -30,29 +30,60 @@ const char index_html[] = R"rawliteral(
   <meta charset="utf-8">
   <title>ESP Stream + Alerts</title>
   <style>
-    body { font-family: sans-serif; text-align: center; background: #f5f5f5; }
-    img { width: 480px; border: 3px solid #333; border-radius: 10px; }
-    #alert { color: red; font-size: 20px; margin-top: 10px; font-weight: bold; }
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #8ff4a3ff;
+    }
+    img {
+      width: 480px;
+      border: 3px solid #333;
+      border-radius: 10px;
+    }
+    #log {
+      width: 480px;
+      height: 200px;
+      margin: 15px auto;
+      background: #d1df84ff;
+      border: 2px solid #333;
+      border-radius: 10px;
+      overflow-y: scroll;
+      text-align: left;
+      padding: 10px;
+      font-size: 16px;
+    }
   </style>
 </head>
 <body>
   <h1>ESP32 Camera Stream</h1>
   <img id="video" src="/stream" />
-  <div id="alert"></div>
-  <script>
-    const alertBox = document.getElementById("alert");
+  <h2>Event Log</h2>
+  <div id="log"></div>
 
-    // Listen for server-sent events from /events
+  <script>
+    const logBox = document.getElementById("log");
     const evtSource = new EventSource("/events");
+
     evtSource.onmessage = function(event) {
-      alertBox.textContent = event.data;
-      // clear after a few seconds
-      setTimeout(() => alertBox.textContent = "", 3000); 
+      const now = new Date().toLocaleTimeString();
+      const line = document.createElement("div");
+      line.textContent = `[${now}] ${event.data}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight; // Auto-scroll to bottom
+    };
+
+    evtSource.onerror = function(e) {
+      const line = document.createElement("div");
+      line.style.color = "red";
+      line.textContent = "[Error] Lost connection to ESP32.";
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
     };
   </script>
 </body>
 </html>
 )rawliteral";
+
 
 static esp_err_t info_handler(httpd_req_t *req) {
     // push info onto webpage at fixed intervals
@@ -167,7 +198,8 @@ static esp_err_t stream_handler(httpd_req_t *req) {
         } else if (flag == 0) {
             // do nothing
             ESP_LOGI(TAG, "Standby...");
-            vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskDelay(pdMS_TO_TICKS(3000));
+            set_flag(&shared_mem.stream_flag, 1);
         } else {
             //
         }

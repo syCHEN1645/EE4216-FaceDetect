@@ -12,7 +12,7 @@ public:
 
     WhoRecognitionCore(const std::string &name, detect::WhoDetect *detect);
     ~WhoRecognitionCore();
-    void message_handler(int flag);
+    // void message_handler(int flag);
     void set_recognizer(HumanFaceRecognizer *recognizer);
     void set_recognition_result_cb(const std::function<void(const std::string &)> &result_cb);
     void set_detect_result_cb(const std::function<void(const detect::WhoDetect::result_t &)> &result_cb);
