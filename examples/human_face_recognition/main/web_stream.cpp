@@ -64,8 +64,8 @@ const char index_html[] = R"rawliteral(
             line.textContent = `[${now}] ${data.msg}`;
             logBox.appendChild(line);
             logBox.scrollTop = logBox.scrollHeight;
-            
-            if (data.flag === 2 || data.flag === 1) {
+
+            if (data.flag === 3 || data.flag === 2 || data.flag === 1) {
                 snapshot.src = `/capture?nocache=${Date.now()}`;
             }
         }
@@ -102,12 +102,13 @@ static esp_err_t info_handler(httpd_req_t *req) {
             msg = "Unknown visitor detected!";
         } else if (flag == 3) {
             msg = "Motion detected!";
+            set_flag(&shared_mem.stream_flag, 1);
         }
     }
     old_flag = flag;
     char buffer[64];
     int len = snprintf(buffer, sizeof(buffer), "{\"flag\": %d, \"msg\": \"%s\"}", flag, msg);
-    ESP_LOGI("Browser", "A message is fetchde by browser");
+    // ESP_LOGI("Browser", "A message is fetchde by browser");
     httpd_resp_send(req, buffer, len);
 
     return ESP_OK;
