@@ -148,7 +148,7 @@ void WhoRecognitionCore::task()
     // ════════════════════════════════════════════════════════════════════
     
     while (true) {
-        // vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(100));
         EventBits_t event_bits = xEventGroupWaitBits(
             m_event_group, 
             RECOGNIZE | ENROLL | DELETE | TASK_PAUSE | TASK_STOP, 

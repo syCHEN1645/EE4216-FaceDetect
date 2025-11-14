@@ -81,7 +81,7 @@ const char index_html[] = R"rawliteral(
     }
 
     // Poll every 1 second
-    setInterval(fetchInfo, 1000);
+    setInterval(fetchInfo, 1500);
     </script>
 
 </body>
@@ -109,6 +109,7 @@ static esp_err_t info_handler(httpd_req_t *req) {
     old_flag = flag;
     char buffer[64];
     int len = snprintf(buffer, sizeof(buffer), "{\"flag\": %d, \"msg\": \"%s\"}", flag, msg);
+    ESP_LOGI("Browser", "A message is fetchde by browser");
     httpd_resp_send(req, buffer, len);
 
     return ESP_OK;
@@ -147,7 +148,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
             // Return frame buffer
             esp_camera_fb_return(cam_fb);
             if (!converted) {
-                ESP_LOGI(TAG, "JPEG conversion failed");
+                ESP_LOGE(TAG, "JPEG conversion failed");
                 break;
             }
 
@@ -176,12 +177,12 @@ static esp_err_t stream_handler(httpd_req_t *req) {
                 break;
             }
             // ESP_LOGI(TAG, "JPEG frame size=%u bytes", jpg_buf_len);
-            vTaskDelay(pdMS_TO_TICKS(120));
+            vTaskDelay(pdMS_TO_TICKS(240));
         } else if (flag == 2) {
             // another handler (capture handler) will send a frame
             // pause streaming until a motion triggers
             vTaskDelay(pdMS_TO_TICKS(1000));
-        } else if (flag == 0) {
+        } else {
             // do nothing
             // pause a second and start streaming
             vTaskDelay(pdMS_TO_TICKS(1000));
@@ -217,7 +218,7 @@ static esp_err_t capture_handler(httpd_req_t *req)
     // return frame buffer
     esp_camera_fb_return(cam_fb);
     if (!converted) {
-        ESP_LOGI(TAG, "JPEG conversion failed");
+        ESP_LOGE(TAG, "JPEG conversion failed");
         res = ESP_FAIL;
         return res;
     }
@@ -230,6 +231,7 @@ static esp_err_t capture_handler(httpd_req_t *req)
     if (res != ESP_OK) {
         return res;
     }
+    ESP_LOGI("Browser", "A frame is fetched by browser");
     return ESP_OK;
 }
 
