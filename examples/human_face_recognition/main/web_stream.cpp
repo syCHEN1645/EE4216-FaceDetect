@@ -28,7 +28,7 @@ const char index_html[] = R"rawliteral(
 <html>
 <head>
   <meta charset="utf-8">
-  <title>ESP Stream + Alerts</title>
+  <title>ESP Alerts</title>
   <style>
     body { font-family: sans-serif; text-align: center; background: #8ff4a3; }
     img { border: 3px solid #333; border-radius: 10px; margin-bottom: 10px; }
@@ -43,8 +43,6 @@ const char index_html[] = R"rawliteral(
   </style>
 </head>
 <body>
-  <h1>ESP32 Camera Stream</h1>
-  <img id="video" src="/stream" />
   
   <h2>Latest Captured Frame</h2>
   <img id="snapshot" src="/capture" alt="No snapshot yet" />
@@ -66,7 +64,7 @@ const char index_html[] = R"rawliteral(
             line.textContent = `[${now}] ${data.msg}`;
             logBox.appendChild(line);
             logBox.scrollTop = logBox.scrollHeight;
-            // refresh snapshot
+            
             if (data.flag === 2 || data.flag === 1) {
                 snapshot.src = `/capture?nocache=${Date.now()}`;
             }
