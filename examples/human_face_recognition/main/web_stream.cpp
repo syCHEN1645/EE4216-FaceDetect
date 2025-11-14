@@ -47,37 +47,43 @@ const char index_html[] = R"rawliteral(
   <img id="video" src="/stream" />
   
   <h2>Latest Captured Frame</h2>
-  <img id="snapshot" src="" alt="No snapshot yet" />
+  <img id="snapshot" src="/capture" alt="No snapshot yet" />
 
   <h2>Event Log</h2>
   <div id="log"></div>
 
   <script>
-    const logBox = document.getElementById("log");
-    const snapshot = document.getElementById("snapshot");
-    const evtSource = new EventSource("/events");
+  const logBox = document.getElementById("log");
+  const snapshot = document.getElementById("snapshot");
 
-    evtSource.onmessage = function(event) {
-      const now = new Date().toLocaleTimeString();
-      const line = document.createElement("div");
-      line.textContent = `[${now}] ${event.data}`;
-      logBox.appendChild(line);
-      logBox.scrollTop = logBox.scrollHeight;
+  function fetchInfo() {
+    fetch("/info")
+      .then(response => response.json())
+      .then(data => {
+        const now = new Date().toLocaleTimeString();
+        const line = document.createElement("div");
+        if (data.msg) {
+            line.textContent = `[${now}] ${data.msg}`;
+            logBox.appendChild(line);
+            logBox.scrollTop = logBox.scrollHeight;
+            // refresh snapshot
+            if (data.flag === 2 || data.flag === 1) {
+                snapshot.src = `/capture?nocache=${Date.now()}`;
+            }
+        }
+      })
+      .catch(err => {
+        const line = document.createElement("div");
+        line.style.color = "red";
+        line.textContent = `[Error] ${err}`;
+        logBox.appendChild(line);
+      });
+    }
 
-      if (event.data.includes("Known visitor detected")) {
-        // Force reload of snapshot (avoid caching with random query)
-        snapshot.src = `/capture?nocache=${Date.now()}`;
-      }
-    };
+    // Poll every 1 second
+    setInterval(fetchInfo, 1000);
+    </script>
 
-    evtSource.onerror = function(e) {
-      const line = document.createElement("div");
-      line.style.color = "red";
-      line.textContent = "[Error] Lost connection to ESP32.";
-      logBox.appendChild(line);
-      logBox.scrollTop = logBox.scrollHeight;
-    };
-  </script>
 </body>
 </html>
 )rawliteral";

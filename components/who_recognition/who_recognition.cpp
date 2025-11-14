@@ -231,7 +231,7 @@ void WhoRecognitionCore::task()
                         
 
                         // tell webpage to keep streaming
-                        message_handler(1);
+                        set_flag(&shared_mem.stream_flag, 1);
                     } else {
                         // Face recognized!
                         std::string result_str = std::format("id: {}, sim: {:.2f}", 
@@ -252,7 +252,7 @@ void WhoRecognitionCore::task()
                         ESP_LOGI("WhoRecognitionCore", "");
                         // tell web page to send a picture
                         // pause streaming
-                        message_handler(2);
+                        set_flag(&shared_mem.stream_flag, 2);
                     }
                     // Restore original detect callback
                     m_detect->set_detect_result_cb(m_detect_result_cb);
