@@ -8,14 +8,13 @@
 #include "who_recognition_app_term.hpp"
 #include "who_spiflash_fatfs.hpp"
 #include "web_stream.cpp"
-#include "shared_mem.hpp"
 
 using namespace who::frame_cap;
 using namespace who::app;
 
 // WiFi credentials
-#define WIFI_SSID "Cheran" //"DMTP5"
-#define WIFI_PASSWORD "CheranESP32"  //"decOmaster5"
+#define WIFI_SSID "abc"
+#define WIFI_PASSWORD "33333333"
 // WiFi connection settings
 #define MAX_RETRY 5
 #define WIFI_CONNECTED_BIT BIT0
@@ -46,7 +45,6 @@ static void event_handler(
                 esp_wifi_connect();
                 s_retry_num++;
                 ESP_LOGI(TAG_WIFI, "Disconnect event, retry to connect to the AP");
-                vTaskDelay(pdMS_TO_TICKS(10));
             } else {
                 xEventGroupSetBits(wifi_event_group, WIFI_CONNECT_FAIL_BIT);
             }
@@ -136,7 +134,6 @@ extern "C" void app_main(void)
     auto frame_cap = get_mipi_csi_frame_cap_pipeline();
     // auto frame_cap = get_uvc_frame_cap_pipeline();
 #endif
-    shared_mem_init();
     init_wifi();
     // hold until connection success
     EventBits_t bits = xEventGroupWaitBits(
