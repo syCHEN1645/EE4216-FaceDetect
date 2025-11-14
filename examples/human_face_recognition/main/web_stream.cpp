@@ -90,37 +90,26 @@ const char index_html[] = R"rawliteral(
 
 
 static esp_err_t info_handler(httpd_req_t *req) {
-    // push info onto webpage at fixed intervals
-    httpd_resp_set_type(req, "text/event-stream");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    int old_flag = 0;
 
-    while (true) {
-        int flag = get_flag(&shared_mem.stream_flag);
-        const char *msg = nullptr;
-        if (flag != old_flag) {
-            if (flag == 2) {
-                ESP_LOGI("info handler", "flag=2");
-                msg = "Known visitor detected!";
-            } else if (flag == 1) {
-                ESP_LOGI("info handler", "flag=1");
-                msg = "Unknown visitor detected!";
-            } else if (flag == 3) {
-                ESP_LOGI("info handler", "flag=3");
-                msg = "Motion detected!";
-            }
-            old_flag = flag;
-            char buffer[128];
-            int len = snprintf(buffer, sizeof(buffer), "data: %s\n\n", msg);
-            esp_err_t res = httpd_resp_send_chunk(req, buffer, len);
-            if (res != ESP_OK) {
-                ESP_LOGW(TAG, "Sending text info failed.");
-                return res;
-            }
-            vTaskDelay(pdMS_TO_TICKS(10));
+    static int old_flag = -1;
+    int flag = get_flag(&shared_mem.stream_flag);
+    const char *msg = "";
+
+    if (old_flag != flag) {
+        if (flag == 2) { 
+            msg = "Known visitor detected!";
+        } else if (flag == 1) {
+            msg = "Unknown visitor detected!";
+        } else if (flag == 3) {
+            msg = "Motion detected!";
         }
     }
+    old_flag = flag;
+    char buffer[64];
+    int len = snprintf(buffer, sizeof(buffer), "{\"flag\": %d, \"msg\": \"%s\"}", flag, msg);
+    httpd_resp_send(req, buffer, len);
 
     return ESP_OK;
 }
@@ -276,10 +265,10 @@ httpd_handle_t init_http() {
 
     // for display text info
     httpd_uri_t info_uri = {
-    .uri       = "/events",
-    .method    = HTTP_GET,
-    .handler   = info_handler,
-    .user_ctx  = NULL
+        .uri       = "/info",
+        .method    = HTTP_GET,
+        .handler   = info_handler,
+        .user_ctx  = NULL
     };
     httpd_register_uri_handler(server, &info_uri);
 
