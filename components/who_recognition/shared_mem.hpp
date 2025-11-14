@@ -15,6 +15,5 @@ extern SemaphoreHandle_t shared_mem_mutex;
 void shared_mem_init();
 void set_flag(int *flag, int val);
 int get_flag(int *flag);
-void message_handler(int flag);
 
 #endif

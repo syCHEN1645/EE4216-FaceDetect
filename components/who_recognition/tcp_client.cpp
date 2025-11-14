@@ -207,7 +207,7 @@ void tcp_recv(void *pvParameters)
                 ESP_LOGI(TAG, "");
 
                 // set to 3 to start streaming
-                message_handler(3);
+                set_flag(&shared_mem.stream_flag, 3);
                 
             } else {
                 ESP_LOGI(TAG, "Unknown command: %s", buffer);
