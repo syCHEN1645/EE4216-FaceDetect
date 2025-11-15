@@ -61,10 +61,10 @@ bool tcp_connect(const char *server_ip, uint16_t port)
         // SOCK_STREAM : Stream Socket with TCP Protocol  
         // ip_protocol : 0 (unspecified) selects TCP Protocol as default
     if (sock < 0) {
-        ESP_LOGE(TAG, "✗ Unable to create socket: errno %d", errno);
+        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
         return false;
     }
-    ESP_LOGI(TAG, "✓ Socket created");
+    ESP_LOGI(TAG, "Socket created");
 
     // Set socket timeouts
     struct timeval timeout;
@@ -129,7 +129,7 @@ bool tcp_connect(const char *server_ip, uint16_t port)
     // tcp connection successful 
     connection_active = true;
     ESP_LOGI(TAG, "╔════════════════════════════════════════╗");
-    ESP_LOGI(TAG, "║   ✓ CONNECTED TO GATEWAY               ║");
+    ESP_LOGI(TAG, "║     CONNECTED TO GATEWAY               ║");
     ESP_LOGI(TAG, "╚════════════════════════════════════════╝");
     ESP_LOGI(TAG, "Remote: %s:%d", server_ip, port);
     
@@ -180,7 +180,7 @@ bool tcp_send(const std::string &message)
         total_sent += sent;
     }
     
-    ESP_LOGI(TAG, "✓ Sent %d bytes to gateway", total_sent);
+    ESP_LOGI(TAG, "Sent %d bytes to gateway", total_sent);
     ESP_LOGD(TAG, "Data: %s", message.c_str());
     
     return true;
@@ -228,7 +228,7 @@ void tcp_recv(void *pvParameters)
             if (buffer[0] == '1') {
                 ESP_LOGI(TAG, "");
                 ESP_LOGI(TAG, "╔════════════════════════════════════════╗");
-                ESP_LOGI(TAG, "║  🔔 PIR MOTION TRIGGER DETECTED        ║");
+                ESP_LOGI(TAG, "║     PIR MOTION TRIGGER DETECTED        ║");
                 ESP_LOGI(TAG, "╚════════════════════════════════════════╝");
                 ESP_LOGI(TAG, "Motion detected by gateway PIR sensor");
                 ESP_LOGI(TAG, "Face recognition will be triggered...");
@@ -272,7 +272,7 @@ void tcp_close()
         close(sock);
         sock = -1;
         connection_active = false;
-        ESP_LOGI(TAG, "✓ Connection closed");
+        ESP_LOGI(TAG, "Connection closed");
     }
 }
 
