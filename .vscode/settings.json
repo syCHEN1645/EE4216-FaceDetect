@@ -2,7 +2,8 @@
     "files.associations": {
         "queue": "cpp",
         "functional": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "C:/Users/chera/Desktop/EE4216-FaceDetect/components/who_peripherals/who_usb"
 }
 
 

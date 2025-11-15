@@ -11,7 +11,7 @@
 
 #include "who_recognition.hpp"
 #include "shared_mem.hpp"
-#include "tcp_client.cpp"
+#include "tcp_client.cpp"    // include tcp_client library 
 
 // Global variables for building JSON payload
 std::string event; 
@@ -83,14 +83,9 @@ bool WhoRecognitionCore::run(const configSTACK_DEPTH_TYPE uxStackDepth,
 
 void WhoRecognitionCore::task()
 {
-    // ════════════════════════════════════════════════════════════════════
-    // GATEWAY CONNECTION SETUP
-    // ════════════════════════════════════════════════════════════════════
-    
-    // ⚠️ IMPORTANT: UPDATE THIS IP TO MATCH YOUR GATEWAY'S IP ADDRESS
-    const char* GATEWAY_IP = "172.20.10.14";  // ← CHANGE THIS!
+    // SETUP TCP CONNECTION 
+    const char* GATEWAY_IP = "172.20.10.14";  // Arduino Code for ESP32 Uses Static IP Address 
     const uint16_t GATEWAY_PORT = 5500;
-    // tcp_connect(GATEWAY_IP, GATEWAY_PORT);
 
     ESP_LOGI("WhoRecognitionCore", "");
     ESP_LOGI("WhoRecognitionCore", "╔════════════════════════════════════════════╗");
@@ -102,13 +97,8 @@ void WhoRecognitionCore::task()
     ESP_LOGI("WhoRecognitionCore", "  Target Port: %d", GATEWAY_PORT);
     ESP_LOGI("WhoRecognitionCore", "");
     
-    // Attempt to connect to gateway
+    // initiate TCP Connection with ESP32 Server 
     bool connected = tcp_connect(GATEWAY_IP, GATEWAY_PORT);
-
-    if (!connected) {
-        tcp_connect(GATEWAY_IP, GATEWAY_PORT);
-    }
-
     
     if (!connected) {
         ESP_LOGE("WhoRecognitionCore", "");
@@ -133,7 +123,7 @@ void WhoRecognitionCore::task()
         ESP_LOGI("WhoRecognitionCore", "");
         ESP_LOGI("WhoRecognitionCore", "Starting PIR trigger listener...");
         
-        // Start background task to receive PIR trigger commands
+        // Start background task to receive PIR trigger commands -- Motion Detection Task 
         // =====================================================
         xTaskCreatePinnedToCore(tcp_recv, "tcp_poll_recv", 4096, NULL, 5, NULL, 0);
         
@@ -143,10 +133,7 @@ void WhoRecognitionCore::task()
         ESP_LOGI("WhoRecognitionCore", "");
     }
     
-    // ════════════════════════════════════════════════════════════════════
-    // MAIN EVENT LOOP
-    // ════════════════════════════════════════════════════════════════════
-    
+    // MAIN LOOP 
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(100));
         EventBits_t event_bits = xEventGroupWaitBits(
@@ -160,38 +147,33 @@ void WhoRecognitionCore::task()
         if (event_bits & TASK_STOP) {
             ESP_LOGI("WhoRecognitionCore", "Stop signal received, shutting down...");
             break;
+        } else if (event_bits & TASK_PAUSE) {
+            ESP_LOGI("WhoRecognitionCore", "Task paused");
+            xEventGroupSetBits(m_event_group, TASK_PAUSED);
+            
+            EventBits_t pause_event_bits = xEventGroupWaitBits(
+                m_event_group, 
+                TASK_RESUME | TASK_STOP, 
+                pdTRUE, 
+                pdFALSE, 
+                portMAX_DELAY);
+            
+            if (pause_event_bits & TASK_STOP) {
+                break;
+            } else {
+                ESP_LOGI("WhoRecognitionCore", "Task resumed");
+                continue;
+            }
         }
         
-        // Handle PAUSE event
-        // if (event_bits & TASK_PAUSE) {
-        //     ESP_LOGI("WhoRecognitionCore", "Task paused");
-        //     xEventGroupSetBits(m_event_group, TASK_PAUSED);
-            
-        //     EventBits_t pause_event_bits = xEventGroupWaitBits(
-        //         m_event_group, 
-        //         TASK_RESUME | TASK_STOP, 
-        //         pdTRUE, 
-        //         pdFALSE, 
-        //         portMAX_DELAY);
-            
-        //     if (pause_event_bits & TASK_STOP) {
-        //         break;
-        //     } else {
-        //         ESP_LOGI("WhoRecognitionCore", "Task resumed");
-        //         continue;
-        //     }
-        // }
-        
-        // ════════════════════════════════════════════════════════════════
-        // HANDLE RECOGNIZE EVENT (PIR TRIGGERED)
-        // ════════════════════════════════════════════════════════════════
+        // Handle RECOGNIZE event when PLAY Button selected 
         if (event_bits & RECOGNIZE) {
-            // Reset result variables
+            // Clear all previous values stored in event, status, id and similarity 
             event = ""; 
             status = ""; 
             id = ""; 
             similarity = ""; 
-            event = "RECOGNIZE";
+            event = "RECOGNIZE";  // store event as RECOGNIZE 
             
             ESP_LOGI("WhoRecognitionCore", "");
             ESP_LOGI("WhoRecognitionCore", "╔════════════════════════════════════════════╗");
@@ -215,10 +197,10 @@ void WhoRecognitionCore::task()
                 
                 // Process recognition results
                 if (m_recognition_result_cb) {
-                    if (ret.empty()) {
-                        // Face detected but not recognized
+                    if (ret.empty()) { 
+                        // Face detected but not recognised 
                         m_recognition_result_cb("who?");
-                        status = "0";
+                        status = "0";   // store status as 0 
                         id = "0";
                         similarity = "0.0";
                         
@@ -232,15 +214,15 @@ void WhoRecognitionCore::task()
 
                         // tell webpage to keep streaming
                         set_flag(&shared_mem.stream_flag, 1);
-                    } else {
-                        // Face recognized!
+                    } else {   
+                        // Face recognised 
                         std::string result_str = std::format("id: {}, sim: {:.2f}", 
                                                             ret[0].id, ret[0].similarity);
                         m_recognition_result_cb(result_str);
                         
-                        status = "1"; 
-                        id = std::to_string(ret[0].id); 
-                        similarity = std::to_string(ret[0].similarity);
+                        status = "1";  // store status as 1 
+                        id = std::to_string(ret[0].id);  // store id as the detected person's id 
+                        similarity = std::to_string(ret[0].similarity);  // store similarity value 
                         
                         ESP_LOGI("WhoRecognitionCore", "");
                         ESP_LOGI("WhoRecognitionCore", "╔════════════════════════════════════════════╗");
@@ -254,14 +236,9 @@ void WhoRecognitionCore::task()
                         // pause streaming
                         set_flag(&shared_mem.stream_flag, 2);
                     }
-                    // Restore original detect callback
                     m_detect->set_detect_result_cb(m_detect_result_cb);
                 }
 
-                // ════════════════════════════════════════════════════
-                // BUILD AND SEND JSON TO GATEWAY
-                // ════════════════════════════════════════════════════
-                
                 // Build JSON payload
                 json_payload = "{"; 
                 json_payload += "\"event\":\"" + event + "\",";
@@ -275,7 +252,7 @@ void WhoRecognitionCore::task()
                     
                 // Send to gateway
                 if (tcp_is_connected()) {
-                    bool sent = tcp_send(json_payload);
+                    bool sent = tcp_send(json_payload); // send via tcp_send function declared in tcp_client.cpp
                     if (sent) {
                         ESP_LOGI("WhoRecognitionCore", "✓ Detection data sent to gateway");
                         ESP_LOGI("WhoRecognitionCore", "  Gateway will upload to ThingSpeak");
@@ -294,9 +271,8 @@ void WhoRecognitionCore::task()
             m_detect->set_detect_result_cb(new_detect_result_cb);
             continue;
         }
-        // ════════════════════════════════════════════════════════════════
-        // HANDLE ENROLL EVENT
-        // ════════════════════════════════════════════════════════════════
+        
+        // HANDLE ENROLL EVENT when UP Button Selected 
         if (event_bits & ENROLL) {
             ESP_LOGI("WhoRecognitionCore", "");
             ESP_LOGI("WhoRecognitionCore", "╔════════════════════════════════════════════╗");
@@ -337,9 +313,7 @@ void WhoRecognitionCore::task()
             continue;
         }
         
-        // ════════════════════════════════════════════════════════════════
-        // HANDLE DELETE EVENT
-        // ════════════════════════════════════════════════════════════════
+        // HANDLE DELETE EVENT when DOWN button selected 
         if (event_bits & DELETE) {
             ESP_LOGI("WhoRecognitionCore", "");
             ESP_LOGI("WhoRecognitionCore", "╔════════════════════════════════════════════╗");
@@ -366,14 +340,11 @@ void WhoRecognitionCore::task()
         }
     }
     
-    // ════════════════════════════════════════════════════════════════════
     // CLEANUP AND SHUTDOWN
-    // ════════════════════════════════════════════════════════════════════
-    
     ESP_LOGI("WhoRecognitionCore", "Task stopping...");
     xEventGroupSetBits(m_event_group, TASK_STOPPED);
     
-    // Close TCP connection
+    // Close TCP connection when event is TASK_STOP 
     tcp_close();
     
     ESP_LOGI("WhoRecognitionCore", "✓ Task stopped");
