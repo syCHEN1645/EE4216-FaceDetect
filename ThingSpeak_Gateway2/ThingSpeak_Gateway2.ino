@@ -130,6 +130,7 @@ String urlEncode(const String &s) {
 // ============================================================================
 // 3c. UTILITY FUNCTIONS: Telegram Alert Handler  
 // ============================================================================
+// Handles the structuring of JSON data into desired format for Telegram alerts
 bool sendTelegramAlert(const String& person, float similarity, int status, int pirCount) {
   if (!TELEGRAM_ENABLE) return false;
 
@@ -157,7 +158,9 @@ bool sendTelegramAlert(const String& person, float similarity, int status, int p
 // ============================================================================
 // 4. Detection Data Upload Function: THINGSPEAK UPLOAD
 // ============================================================================
-
+// This core function essentially extracts JSON detection data (processed) & builds the data struct
+// to be sent to ThingSpeak for visualisation. 
+// Will be called by processDetectionData()
 bool uploadToThingSpeak(const String& jsonData) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[ThingSpeak] ✗ WiFi not connected");
@@ -233,8 +236,9 @@ bool uploadToThingSpeak(const String& jsonData) {
 // ============================================================================
 // 5. Detection Data Processing Function: PROCESS DETECTION DATA
 // ============================================================================
-
-// this function is called by handleTCPClient() after data has been received by the ESP32 
+// This core function parses JSON data into desired format, then calls uploadToThingSpeak() function. 
+// If ThingSpeak upload is successful, sendTelegramAlert() will also be called. 
+// Will be called by handleTCPClient() after data has been received by the ESP32 
 void processDetectionData(const String& data) {
   Serial.println("\n╔════════════════════════════════════════╗");
   Serial.println("║     FACE DETECTION RECEIVED            ║");
@@ -276,7 +280,6 @@ void processDetectionData(const String& data) {
   // Upload to ThingSpeak 
   bool uploaded = uploadToThingSpeak(data);
   if (uploaded) {
-    // Placeholder for (TELEGRAM) notifications if needed
     // Use already-parsed values if you have them; otherwise re-extract:
     StaticJsonDocument<1024> doc;
     if (deserializeJson(doc, data) == DeserializationError::Ok) {
@@ -287,8 +290,7 @@ void processDetectionData(const String& data) {
       int status = doc["status"] | doc["face_status"] | 0;
 
       // After successfully uploading to ThingSpeak, upload to Telegram
-      sendTelegramAlert(person, similarity, status, pirDetectionCount);    
-      // }
+      sendTelegramAlert(person, similarity, status, pirDetectionCount); 
     }
   }
 }
@@ -296,9 +298,9 @@ void processDetectionData(const String& data) {
 // ============================================================================
 // 6. Detection Data Retrieval Function: HANDLE TCP CLIENT
 // ============================================================================
-
-// this function receives RECOGNISE data from ESP-EYE 
+// This core function receives RECOGNISE data from ESP-EYE via TCP client,  
 // AND sends msg to ESP-EYE if motion sensor has been triggered 
+// Called in void loop(). 
 void handleTCPClient(WiFiClient& client) {
   Serial.println("\n[TCP] ┌─ Client connected");
   Serial.print("[TCP] │  IP: ");
