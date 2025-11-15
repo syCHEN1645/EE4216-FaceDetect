@@ -1,6 +1,10 @@
 # Declaration
 
-This repo is for school assignment, and it makes use of code from the ESP-WHO repository. The original README is as below. 
+This repo is for school assignment, and it makes use of code from the ESP-WHO repository. 
+It adds networking functionality for the ESP-EYE to network with another ESP32 Server. 
+The other ESP32 Server uses Arduino Platform, while the ESP-EYE uses ESP-IDF. 
+
+The original README is as below. 
 
 
 # ESP-WHO [[中文]](./README_CN.md)
